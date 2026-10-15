@@ -1,12 +1,13 @@
 import { html, useState, useEffect, useRef } from './lib.js'
 import {
   parse, toIso, ymd, addDays, addMinutes, startOfDay, MINUTE, DAY, WEEKDAYS, WEEKDAYS_LETTER, MONTHS,
-  describeRecurrence, nthLabel, fmtDuration, expandAll, fmtTime, weekdayOrder, pad
+  describeRecurrence, nthLabel, fmtDuration, expandAll, fmtTime, fmtDayShort, weekdayOrder, pad
 } from './dates.js'
 import { Icon } from './icons.js'
 import { Switch, AutoTextarea, IconButton, Kbd, cx } from './ui.js'
 import { useUi, db, setUi, addEvent, updateEvent, detachOccurrence, ask, toast, withUndo, removeEvent } from './store.js'
 import { deleteOccurrence } from './calendar.js'
+import { draftConflicts } from './core/conflicts.js'
 
 const REMINDERS = [0, 5, 10, 15, 30, 60, 120, 1440, 2880, 10080]
 const remLabel = m => m === 0 ? "À l'heure de début" : m < 60 ? m + ' minutes avant' : m < 1440 ? (m / 60) + (m === 60 ? ' heure avant' : ' heures avant') : m < 10080 ? (m / 1440) + (m === 1440 ? ' jour avant' : ' jours avant') : '1 semaine avant'
@@ -109,8 +110,9 @@ function EditorPanel({ editor }) {
   const setRec = patch => set({ recurrence: { ...rec, ...patch } })
 
   // Conflits avec d'autres événements
-  const conflicts = !ev.allDay ? expandAll(d.events.filter(x => x.id !== ev.id), start, end, new Set(d.calendars.filter(c => c.visible).map(c => c.id)))
-    .filter(o => !o.ev.allDay && o.end - o.start < DAY && o.start < end && o.end > start) : []
+  // (série comprise : les 6 prochains mois d'occurrences sont vérifiés)
+  const conflicts = draftConflicts(ev, d.events, new Set(d.calendars.filter(c => c.visible).map(c => c.id))).map(c => c.other)
+  const periods = (d.periods || []).filter(p => p.end && p.end >= ymd(start) && (!p.start || p.start <= ymd(start)))
 
   const close = () => setUi({ editor: null })
 
@@ -203,7 +205,7 @@ function EditorPanel({ editor }) {
               </div>
               ${conflicts.length > 0 && html`<div class="conflict">
                 <${Icon} name="info" size=${14} />
-                Chevauche ${conflicts.length === 1 ? '« ' + conflicts[0].ev.title + ' » (' + fmtTime(conflicts[0].start, s.h12) + ')' : conflicts.length + ' événements'}
+                Chevauche « ${conflicts[0].ev.title || 'Sans titre'} » (${fmtDayShort(conflicts[0].start)}, ${fmtTime(conflicts[0].start, s.h12)})${conflicts.length > 1 ? ' et ' + (conflicts.length - 1) + ' autre' + (conflicts.length > 2 ? 's' : '') + ' occurrence' + (conflicts.length > 2 ? 's' : '') : ''}
               </div>`}
             </div>
           </div>
@@ -262,6 +264,9 @@ function EditorPanel({ editor }) {
                   </div>
                   <div class="rec-summary">${describeRecurrence(rec, start)}</div>
                 </div>`}
+              ${rec && periods.length > 0 && html`<div class="period-chips"><span class="muted">S'arrêter à la fin de</span>
+                ${periods.map(p => html`<button class=${cx('chip-btn', rec.until === p.end && 'active')} title=${"Jusqu'au " + fmtDayShort(parse(p.end))}
+                  onClick=${() => { setRec({ until: p.end, count: null }); setShowCustom(true) }}>${p.name}</button>`)}</div>`}
             </div>
           </div>
 

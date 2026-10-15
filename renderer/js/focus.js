@@ -3,10 +3,10 @@
 import { html, useState, useEffect } from './lib.js'
 import { Icon } from './icons.js'
 import { IconButton, cx } from './ui.js'
-import { db, toast } from './store.js'
+import { db, useDb, toast, logFocus } from './store.js'
 import { notify, chime } from './reminders.js'
 
-const state = { mode: 'focus', running: false, endsAt: 0, remaining: null, sessions: 0 }
+const state = { mode: 'focus', running: false, endsAt: 0, remaining: null, sessions: 0, categoryId: null }
 const subs = new Set()
 const emit = () => subs.forEach(f => f())
 let tick = null
@@ -20,13 +20,12 @@ function loop() {
     if (!state.running) return
     if (Date.now() >= state.endsAt) {
       const wasFocus = state.mode === 'focus'
-      if (wasFocus) state.sessions++
+      if (wasFocus) { state.sessions++; logFocus(db().settings.focusMinutes, state.categoryId) }
       state.mode = wasFocus ? 'break' : 'focus'
       state.running = false
       state.remaining = null
       const msg = wasFocus ? 'Session terminée. Accordez-vous une pause.' : 'Pause terminée. Prêt pour la suite ?'
-      notify('Concentration', msg)
-      chime()
+      if (db().settings.notify?.focus !== false) { notify('Concentration', msg); chime() }
       toast(msg)
     }
     emit()
@@ -48,6 +47,7 @@ const fmt = ms => { const s = Math.ceil(ms / 1000); return String(Math.floor(s /
 
 export function FocusCard() {
   const f = useFocus()
+  const d = useDb()
   const rem = remaining()
   const pct = 1 - rem / total()
   const R = 54, C = 2 * Math.PI * R
@@ -64,6 +64,11 @@ export function FocusCard() {
         </svg>
         <div class="focus-time">${fmt(rem)}</div>
       </div>
+      ${d.categories.length > 0 && html`<select class="input select focus-cat" value=${f.categoryId || ''} aria-label="Catégorie de la session"
+        onChange=${e => { state.categoryId = e.target.value || null; emit() }}>
+        <option value="">Sans catégorie</option>
+        ${d.categories.map(c => html`<option value=${c.id}>${c.name}</option>`)}
+      </select>`}
       <div class="focus-controls">
         <${IconButton} icon="reset" label="Réinitialiser" onClick=${reset} />
         <button class="btn btn-primary focus-main" onClick=${() => f.running ? pause() : start()}>

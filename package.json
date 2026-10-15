@@ -1,10 +1,12 @@
 {
   "name": "zr-agenda",
-  "version": "2.0.0",
-  "description": "ZR Agenda - agenda, taches et notes chiffres. BMM Systems / ZYRHA OS",
+  "version": "3.0.0",
+  "description": "ZR Agenda - centre personnel d'organisation chiffre : agenda, taches, habitudes, journal, objectifs, deplacements. BMM Systems / ZYRHA OS",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "test": "node scripts/run-tests.mjs",
+    "smoke": "electron scripts/smoke.cjs",
     "dist": "electron-builder --win"
   },
   "build": {

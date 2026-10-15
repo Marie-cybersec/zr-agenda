@@ -7,6 +7,8 @@ import { Icon } from './icons.js'
 import { Segmented, IconButton, Empty, cx } from './ui.js'
 import { useDb } from './store.js'
 import { useOccurrences } from './calendar.js'
+import { completionRate } from './core/habits.js'
+import { MOODS } from './journal.js'
 
 const hoursLabel = min => min >= 60 ? (Math.round(min / 6) / 10).toLocaleString('fr-FR') + ' h' : Math.round(min) + ' min'
 
@@ -45,8 +47,24 @@ export function InsightsSection() {
     const created = d.tasks.filter(t => new Date(t.createdAt) >= from && new Date(t.createdAt) < to).length
     const cals = d.calendars.map(c => ({ ...c, min: byCal.get(c.id) || 0 })).filter(c => c.min > 0).sort((a, b) => b.min - a.min)
     const busiest = days.reduce((m, x) => x.min > m.min ? x : m, days[0])
-    return { days, total, prevTotal, done, created, cals, busiest, events: occ.length }
-  }, [occ, prevOcc, d.tasks, d.calendars])
+
+    // Ponctualité : tâches terminées avec échéance, terminées au plus tard le jour prévu
+    const withDue = d.tasks.filter(t => t.done && t.doneAt && t.due && new Date(t.doneAt) >= from && new Date(t.doneAt) < to)
+    const onTime = withDue.filter(t => ymd(new Date(t.doneAt)) <= t.due).length
+    const last = new Date(Math.min(Date.now(), to - 1))
+    const habits = d.habits.filter(h => !h.archived).map(h => ({ h, rate: completionRate(d.habitLogs, h, from, last, d.settings.weekStart) })).filter(x => x.rate != null)
+    const focus = d.focusLog.filter(f => new Date(f.at) >= from && new Date(f.at) < to)
+    const focusByCat = new Map()
+    for (const f of focus) focusByCat.set(f.categoryId || '', (focusByCat.get(f.categoryId || '') || 0) + f.minutes)
+    const moods = d.journal.filter(e => e.mood && e.date >= ymd(from) && e.date < ymd(to)).map(e => e.mood)
+    return {
+      days, total, prevTotal, done, created, cals, busiest, events: occ.length,
+      onTime: withDue.length ? onTime / withDue.length : null, withDue: withDue.length,
+      habits: habits.sort((a, b) => b.rate - a.rate), focusTotal: focus.reduce((a, f) => a + f.minutes, 0),
+      focusCats: [...focusByCat].map(([id, min]) => ({ cat: d.categories.find(c => c.id === id), min })).sort((a, b) => b.min - a.min),
+      mood: moods.length ? moods.reduce((a, b) => a + b, 0) / moods.length : null, moodCount: moods.length
+    }
+  }, [occ, prevOcc, d.tasks, d.calendars, d.habits, d.habitLogs, d.focusLog, d.journal])
 
   const step = dir => setAnchor(range === 'week' ? addDays(anchor, 7 * dir) : new Date(anchor.getFullYear(), anchor.getMonth() + dir, 1))
   const title = range === 'week'
@@ -93,6 +111,29 @@ export function InsightsSection() {
             <span class="kpi-label">Tâches terminées</span>
             <span class="kpi-value">${stats.done}</span>
             <span class="kpi-foot">${stats.created} créée${stats.created > 1 ? 's' : ''} sur la période</span>
+          </div>
+        </div>
+
+        <div class="kpis">
+          <div class="kpi">
+            <span class="kpi-label">Tâches terminées à temps</span>
+            <span class="kpi-value">${stats.onTime == null ? '—' : Math.round(stats.onTime * 100) + ' %'}</span>
+            <span class="kpi-foot">${stats.withDue} tâche${stats.withDue > 1 ? 's' : ''} avec échéance terminée${stats.withDue > 1 ? 's' : ''}</span>
+          </div>
+          <div class="kpi">
+            <span class="kpi-label">Habitudes réussies</span>
+            <span class="kpi-value">${stats.habits.length ? Math.round(stats.habits.reduce((a, x) => a + x.rate, 0) / stats.habits.length * 100) + ' %' : '—'}</span>
+            <span class="kpi-foot">${stats.habits.length ? 'Meilleure : ' + stats.habits[0].h.name : 'Aucune habitude suivie'}</span>
+          </div>
+          <div class="kpi">
+            <span class="kpi-label">Concentration</span>
+            <span class="kpi-value">${hoursLabel(stats.focusTotal)}</span>
+            <span class="kpi-foot">${stats.focusCats.length ? stats.focusCats.slice(0, 2).map(x => (x.cat ? x.cat.name : 'Sans catégorie') + ' ' + hoursLabel(x.min)).join(' · ') : 'Aucune session terminée'}</span>
+          </div>
+          <div class="kpi">
+            <span class="kpi-label">Humeur moyenne (journal)</span>
+            <span class="kpi-value">${stats.mood == null ? '—' : MOODS[Math.round(stats.mood) - 1].label}</span>
+            <span class="kpi-foot">${stats.moodCount ? stats.moodCount + ' entrée' + (stats.moodCount > 1 ? 's' : '') + ' notée' + (stats.moodCount > 1 ? 's' : '') + ' · ' + stats.mood.toLocaleString('fr-FR', { maximumFractionDigits: 1 }) + '/5' : 'Aucune humeur notée'}</span>
           </div>
         </div>
 

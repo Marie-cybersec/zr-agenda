@@ -2,8 +2,10 @@ import { html, useState, useMemo, useRef, useEffect } from './lib.js'
 import { parse, ymd, addDays, startOfDay, diffDays, fmtRelativeDay, fmtDayShort, cap, fmtDayLong, toIso } from './dates.js'
 import { Icon } from './icons.js'
 import { Checkbox, Segmented, IconButton, AutoTextarea, Empty, Floating, Menu, cx } from './ui.js'
-import { useDb, useUi, db, setUi, addTask, updateTask, removeTask, toggleTask, withUndo, toast, openEditor, uid } from './store.js'
+import { useDb, useUi, db, setUi, addTask, updateTask, removeTask, toggleTask, setTaskStatus, withUndo, toast, openEditor, uid } from './store.js'
 import { parseQuick } from './nlp.js'
+import { searchTasks } from './core/search.js'
+import { CategorySelect, CatTag } from './widgets.js'
 
 export const PRIORITIES = [
   { value: 0, label: 'Aucune', color: 'var(--text-4)' },
@@ -11,6 +13,15 @@ export const PRIORITIES = [
   { value: 2, label: 'Moyenne', color: '#D97706' },
   { value: 3, label: 'Haute', color: '#E5484D' }
 ]
+export const STATUSES = [
+  { value: 'todo', label: 'À faire' },
+  { value: 'doing', label: 'En cours' },
+  { value: 'waiting', label: 'En attente' },
+  { value: 'done', label: 'Terminée' }
+]
+const ESTIMATES = [15, 30, 45, 60, 90, 120, 180, 240]
+const TASK_REMINDERS = [[0, "À l'échéance"], [10, '10 min avant'], [30, '30 min avant'], [60, '1 h avant'], [120, '2 h avant'], [1440, 'La veille']]
+
 const REPEATS = [
   { value: null, label: 'Ne se répète pas' },
   { value: 'daily', label: 'Tous les jours' },
@@ -82,8 +93,12 @@ export function TaskRow({ t, compact, onOpen, selected }) {
         onChange=${() => { toggleTask(t.id); if (!t.done && t.repeat) toast('Prochaine occurrence créée') }} label="Terminer la tâche" />
       <div class="task-main">
         <div class="task-title">${t.title || 'Sans titre'}</div>
-        ${!compact && (info || t.subtasks.length > 0 || t.notes || t.repeat) && html`<div class="task-meta">
+        ${!compact && (info || t.subtasks.length > 0 || t.notes || t.repeat || t.categoryId || t.estimate || (t.status && t.status !== 'todo' && t.status !== 'done')) && html`<div class="task-meta">
           ${info && html`<span class=${cx('due', info.overdue && 'overdue', info.today && 'today')}><${Icon} name="calendar" size=${12} />${info.label}</span>`}
+          ${t.status === 'doing' && html`<span class="status-pill s-doing">En cours</span>`}
+          ${t.status === 'waiting' && html`<span class="status-pill s-waiting">En attente</span>`}
+          ${t.categoryId && html`<${CatTag} id=${t.categoryId} />`}
+          ${t.estimate && html`<span><${Icon} name="hourglass" size=${12} />${t.estimate < 60 ? t.estimate + ' min' : (t.estimate / 60).toLocaleString('fr-FR') + ' h'}</span>`}
           ${t.repeat && html`<span><${Icon} name="repeat" size=${12} /></span>`}
           ${t.subtasks.length > 0 && html`<span><${Icon} name="listCheck" size=${12} />${doneSubs}/${t.subtasks.length}</span>`}
           ${t.notes && html`<span><${Icon} name="text" size=${12} /></span>`}
@@ -99,10 +114,12 @@ export function TasksSection() {
   const u = useUi()
   const [filter, setFilter] = useState('open')
   const [query, setQuery] = useState('')
+  const [cat, setCat] = useState(null)
+  const [status, setStatus] = useState('')
   const now = new Date()
-  const q = query.trim().toLowerCase()
-  const list = d.tasks.filter(t => (filter === 'all' || (filter === 'open' ? !t.done : t.done)) &&
-    (!q || t.title.toLowerCase().includes(q) || (t.notes || '').toLowerCase().includes(q)))
+  const q = query.trim()
+  const list = searchTasks(d.tasks, q).filter(t => (filter === 'all' || (filter === 'open' ? !t.done : t.done)) &&
+    (!cat || t.categoryId === cat) && (!status || (t.status || (t.done ? 'done' : 'todo')) === status))
   const selected = d.tasks.find(t => t.id === u.selectedTask)
   const open = d.tasks.filter(t => !t.done)
   const overdue = open.filter(t => t.due && diffDays(now, parse(t.due)) < 0).length
@@ -127,7 +144,10 @@ export function TasksSection() {
           ${todayCount > 0 && html`<span class="chip accent">${todayCount} aujourd'hui</span>`}
         </div>
         <div class="toolbar-right">
-          <div class="search-field"><${Icon} name="search" size=${14} /><input placeholder="Filtrer" value=${query} onInput=${e => setQuery(e.target.value)} /></div>
+          <div class="search-field"><${Icon} name="search" size=${14} /><input placeholder="Rechercher" title="Titre, notes et sous-tâches" value=${query} onInput=${e => setQuery(e.target.value)} /></div>
+          <${CategorySelect} value=${cat} onChange=${setCat} none="Toutes catégories" class="sm-select" />
+          ${filter !== 'done' && html`<select class="input select sm-select" value=${status} onChange=${e => setStatus(e.target.value)} aria-label="Statut">
+            <option value="">Tous statuts</option>${STATUSES.filter(x => x.value !== 'done').map(x => html`<option value=${x.value}>${x.label}</option>`)}</select>`}
           <${Segmented} value=${filter} onChange=${setFilter} options=${[{ value: 'open', label: 'À faire' }, { value: 'done', label: 'Terminées' }, { value: 'all', label: 'Toutes' }]} />
         </div>
       </header>
@@ -186,6 +206,32 @@ function TaskDetail({ t }) {
           ${[["Aujourd'hui", 0], ['Demain', 1], ['Dans 1 semaine', 7]].map(([l, n]) => html`
             <button class="chip-btn" onClick=${() => updateTask(t.id, { due: ymd(addDays(startOfDay(new Date()), n)) })}>${l}</button>`)}
           ${t.due && html`<button class="chip-btn" onClick=${() => updateTask(t.id, { due: null, dueTime: null })}>Retirer</button>`}
+        </div>
+        <div class="td-prop">
+          <span class="td-label"><${Icon} name="clock" size=${14} />Rappel</span>
+          <select class="input select" value=${t.reminder == null ? '' : t.reminder} disabled=${!t.dueTime} title=${t.dueTime ? '' : "Définissez une heure d'échéance"}
+            onChange=${e => updateTask(t.id, { reminder: e.target.value === '' ? null : Number(e.target.value) })}>
+            <option value="">Par défaut</option><option value="-1">Aucun</option>
+            ${TASK_REMINDERS.map(([m, l]) => html`<option value=${m}>${l}</option>`)}
+          </select>
+        </div>
+        <div class="td-prop">
+          <span class="td-label"><${Icon} name="checkCircle" size=${14} />Statut</span>
+          <div class="prio-picker">
+            ${STATUSES.map(x => html`<button class=${cx('prio-opt', (t.status || (t.done ? 'done' : 'todo')) === x.value && 'active')} style=${{ '--c': 'var(--accent)' }}
+              onClick=${() => setTaskStatus(t.id, x.value)}>${x.label}</button>`)}
+          </div>
+        </div>
+        <div class="td-prop">
+          <span class="td-label"><${Icon} name="hash" size=${14} />Catégorie</span>
+          <${CategorySelect} value=${t.categoryId} onChange=${v => updateTask(t.id, { categoryId: v })} />
+        </div>
+        <div class="td-prop">
+          <span class="td-label"><${Icon} name="hourglass" size=${14} />Estimation</span>
+          <select class="input select" value=${t.estimate || ''} onChange=${e => updateTask(t.id, { estimate: e.target.value ? Number(e.target.value) : null })}>
+            <option value="">Non estimée</option>
+            ${ESTIMATES.map(m => html`<option value=${m}>${m < 60 ? m + ' min' : (m / 60).toLocaleString('fr-FR') + ' h'}</option>`)}
+          </select>
         </div>
         <div class="td-prop">
           <span class="td-label"><${Icon} name="flag" size=${14} />Priorité</span>

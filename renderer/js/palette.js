@@ -6,6 +6,8 @@ import { useUi, db, setUi, addEvent, addTask, addNote, openEditor, toast, setSet
 import { parseQuick, quickToEvent } from './nlp.js'
 import { calColor, createAt, editOccurrence } from './calendar.js'
 import { stripHtml } from './notes.js'
+import { searchJournal, searchTasks, snippet, terms } from './core/search.js'
+import { writeToday } from './journal.js'
 
 const norm = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
@@ -28,8 +30,17 @@ export function commands() {
     { id: 'go-today', icon: 'sun', label: "Aller à « Aujourd'hui »", hint: 'Alt+1', run: go({ section: 'today' }) },
     { id: 'go-cal', icon: 'calendar', label: 'Aller au calendrier', hint: 'Alt+2', run: go({ section: 'calendar' }) },
     { id: 'go-tasks', icon: 'tasks', label: 'Aller aux tâches', hint: 'Alt+3', run: go({ section: 'tasks' }) },
-    { id: 'go-notes', icon: 'note', label: 'Aller aux notes', hint: 'Alt+4', run: go({ section: 'notes' }) },
-    { id: 'go-insights', icon: 'chart', label: "Aller à l'analyse", hint: 'Alt+5', run: go({ section: 'insights' }) },
+    { id: 'go-habits', icon: 'repeat', label: 'Aller aux habitudes', hint: 'Alt+4', run: go({ section: 'habits', habitsTab: 'habits' }) },
+    { id: 'go-routines', icon: 'listCheck', label: 'Aller aux routines', run: go({ section: 'habits', habitsTab: 'routines' }) },
+    { id: 'go-reminders', icon: 'bell', label: 'Rappels et alarmes', run: go({ section: 'habits', habitsTab: 'reminders' }) },
+    { id: 'go-journal', icon: 'book', label: 'Aller au journal', hint: 'Alt+5', run: go({ section: 'journal' }) },
+    { id: 'journal-today', icon: 'edit', label: "Écrire l'entrée du jour", run: () => { setUi({ palette: false }); writeToday() } },
+    { id: 'go-goals', icon: 'target', label: 'Aller aux objectifs', hint: 'Alt+6', run: go({ section: 'goals' }) },
+    { id: 'go-trips', icon: 'plane', label: 'Aller aux déplacements', hint: 'Alt+7', run: go({ section: 'trips' }) },
+    { id: 'go-notes', icon: 'note', label: 'Aller aux notes', hint: 'Alt+8', run: go({ section: 'notes' }) },
+    { id: 'go-insights', icon: 'chart', label: "Aller à l'analyse", hint: 'Alt+9', run: go({ section: 'insights' }) },
+    { id: 'categories', icon: 'hash', label: 'Gérer les catégories', run: go({ settings: 'categories' }) },
+    { id: 'schedule', icon: 'clock', label: 'Horaires et périodes', run: go({ settings: 'schedule' }) },
     { id: 'date-today', icon: 'today', label: "Afficher aujourd'hui dans le calendrier", hint: 'T', run: go({ section: 'calendar', date: startOfDay(new Date()) }) },
     { id: 'view-day', icon: 'calendar', label: 'Vue jour', hint: 'J', run: go({ section: 'calendar', view: 'day' }) },
     { id: 'view-week', icon: 'calendar', label: 'Vue semaine', hint: 'S', run: go({ section: 'calendar', view: 'week' }) },
@@ -90,9 +101,19 @@ function Palette() {
         sub: cap(fmtDayShort(parse(e.start))) + (e.allDay ? '' : ', ' + fmtTime(parse(e.start), d.settings.h12)) + (e.recurrence ? ' · récurrent' : '') + (e.location ? ' · ' + e.location : ''),
         run: () => { close(); setUi({ section: 'calendar', date: startOfDay(parse(e.start)) }); editOccurrence({ ev: e, start: parse(e.start), end: parse(e.end) }) }
       })))
-      const tasks = d.tasks.filter(t => score(t.title, nq) || score(t.notes, nq)).slice(0, 5)
+      const tasks = searchTasks(d.tasks, q).sort((a, b) => a.done - b.done).slice(0, 5)
       out.push(...tasks.map(t => ({ group: 'Tâches', id: t.id, icon: t.done ? 'checkCircle' : 'tasks', label: t.title, sub: t.due ? 'Échéance ' + fmtDayShort(parse(t.due)) : t.done ? 'Terminée' : '',
         run: () => setUi({ palette: false, section: 'tasks', selectedTask: t.id }) })))
+      const ts = terms(q)
+      out.push(...searchJournal(d.journal, q).slice(0, 5).map(e => ({ group: 'Journal', id: e.id, icon: 'book',
+        label: e.title || cap(fmtDayShort(parse(e.date))), sub: (e.title ? cap(fmtDayShort(parse(e.date))) + ' · ' : '') + snippet(e.content, ts, 40),
+        run: () => setUi({ palette: false, section: 'journal', selectedEntry: e.id }) })))
+      out.push(...d.habits.filter(h => score(h.name, nq)).slice(0, 3).map(h => ({ group: 'Habitudes', id: h.id, icon: 'repeat', label: h.name,
+        run: () => setUi({ palette: false, section: 'habits', habitsTab: 'habits', selectedHabit: h.id }) })))
+      out.push(...d.goals.filter(g => score(g.title, nq)).slice(0, 3).map(g => ({ group: 'Objectifs', id: g.id, icon: 'target', label: g.title,
+        run: () => setUi({ palette: false, section: 'goals' }) })))
+      out.push(...d.trips.filter(t => score(t.title, nq) || score(t.destination && t.destination.name, nq)).slice(0, 3).map(t => ({ group: 'Déplacements', id: t.id, icon: 'plane', label: t.title,
+        sub: t.destination ? t.destination.name : '', run: () => setUi({ palette: false, section: 'trips', selectedTrip: t.id }) })))
       const notes = d.notes.filter(n => score(n.title, nq) || norm(stripHtml(n.content)).includes(nq)).slice(0, 5)
       out.push(...notes.map(n => {
         const txt = stripHtml(n.content)

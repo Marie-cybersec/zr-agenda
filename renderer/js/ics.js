@@ -1,6 +1,6 @@
 // Import / export iCalendar (RFC 5545) — compatible Google Agenda, Outlook, Apple Calendrier.
 
-import { parse, pad, toIso, addDays, ymd } from './dates.js'
+import { parse, pad, toIso, addDays, ymd, fromZoned, isValidTimeZone } from './dates.js'
 
 const BYDAY = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
 
@@ -65,10 +65,39 @@ function parseDateValue(value, params) {
   }
   const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})?(Z)?$/.exec(v)
   if (!m) return null
+  const tz = resolveTzid(params.TZID)
   const d = m[7]
     ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)))
-    : new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0))
+    : tz ? fromZoned(m[1] + '-' + m[2] + '-' + m[3] + 'T' + m[4] + ':' + m[5], tz)
+      : new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0))
   return { date: d, allDay: false }
+}
+
+// Identifiants Windows fréquents (Outlook, Exchange) → fuseaux IANA.
+const WINDOWS_TZ = {
+  'romance standard time': 'Europe/Paris', 'w. europe standard time': 'Europe/Berlin', 'central europe standard time': 'Europe/Budapest',
+  'central european standard time': 'Europe/Warsaw', 'gmt standard time': 'Europe/London', 'greenwich standard time': 'Atlantic/Reykjavik',
+  'e. europe standard time': 'Europe/Chisinau', 'fle standard time': 'Europe/Kiev', 'morocco standard time': 'Africa/Casablanca',
+  'w. central africa standard time': 'Africa/Lagos', 'south africa standard time': 'Africa/Johannesburg', 'e. africa standard time': 'Africa/Nairobi',
+  'eastern standard time': 'America/New_York', 'central standard time': 'America/Chicago', 'mountain standard time': 'America/Denver',
+  'pacific standard time': 'America/Los_Angeles', 'canada central standard time': 'America/Regina', 'atlantic standard time': 'America/Halifax',
+  'tokyo standard time': 'Asia/Tokyo', 'china standard time': 'Asia/Shanghai', 'india standard time': 'Asia/Kolkata',
+  'arabian standard time': 'Asia/Dubai', 'aus eastern standard time': 'Australia/Sydney', 'utc': 'UTC', 'coordinated universal time': 'UTC'
+}
+
+// TZID d'un fichier .ics → fuseau IANA reconnu, sinon null (heure locale de l'appareil).
+export function resolveTzid(tzid) {
+  if (!tzid) return null
+  const raw = tzid.trim()
+  if (isValidTimeZone(raw)) return raw
+  const win = WINDOWS_TZ[raw.toLowerCase()]
+  if (win) return win
+  const parts = raw.split('/').filter(Boolean)
+  for (let i = 0; i < parts.length - 1; i++) {
+    const cand = parts.slice(i).join('/')
+    if (/^[A-Z][A-Za-z_]+\/[A-Za-z_\/-]+$/.test(cand) && isValidTimeZone(cand)) return cand
+  }
+  return null
 }
 
 export function importIcs(text) {

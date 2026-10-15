@@ -1,9 +1,9 @@
 import { html, render, useState, useEffect, useRef } from './lib.js'
-import { startOfDay, diffDays, parse } from './dates.js'
+import { startOfDay, diffDays, parse, ymd } from './dates.js'
 import { Icon, Logo } from './icons.js'
 import { Floating, Menu, DialogHost, Toasts, IconButton, Kbd, cx } from './ui.js'
 import {
-  useDb, useUi, db, ui, setUi, loadDb, unloadDb, flushSync, mutate, toast, addNote, addTask, ACCENTS, CAL_COLORS
+  useDb, useUi, db, ui, setUi, loadDb, unloadDb, flushSync, mutate, toast, addNote, addTask, addItem, ACCENTS, CAL_COLORS
 } from './store.js'
 import { CalendarSection, CalendarPopovers, MiniCalendar, navigate, createAt, deleteOccurrence, editOccurrence } from './calendar.js'
 import { EventEditor } from './editor.js'
@@ -14,7 +14,11 @@ import { InsightsSection } from './insights.js'
 import { CommandPalette } from './palette.js'
 import { SettingsModal, ShortcutsModal } from './settings.js'
 import { FocusMini } from './focus.js'
-import { startReminders } from './reminders.js'
+import { startReminders, checkNow } from './reminders.js'
+import { HabitsSection } from './habits-view.js'
+import { JournalSection, writeToday } from './journal.js'
+import { GoalsSection } from './goals-view.js'
+import { TripsSection } from './trips-view.js'
 
 const api = window.zr
 
@@ -67,6 +71,10 @@ const SECTIONS = [
   ['today', "Aujourd'hui", 'sun'],
   ['calendar', 'Calendrier', 'calendar'],
   ['tasks', 'Tâches', 'tasks'],
+  ['habits', 'Habitudes', 'repeat'],
+  ['journal', 'Journal', 'book'],
+  ['goals', 'Objectifs', 'target'],
+  ['trips', 'Déplacements', 'plane'],
   ['notes', 'Notes', 'note'],
   ['insights', 'Analyse', 'chart']
 ]
@@ -140,6 +148,9 @@ function SidebarPopovers() {
       { label: 'Événement', icon: 'calendarPlus', hint: 'C', onClick: () => { const x = new Date(); x.setMinutes(0, 0, 0); x.setHours(x.getHours() + 1); createAt(x) } },
       { label: 'Tâche', icon: 'tasks', hint: 'Ctrl+Maj+T', onClick: () => { const t = addTask({ title: '' }); setUi({ section: 'tasks', selectedTask: t.id }) } },
       { label: 'Note', icon: 'note', hint: 'Ctrl+N', onClick: () => { const n = addNote({}); setUi({ section: 'notes', selectedNote: n.id }) } },
+      { label: 'Entrée de journal', icon: 'book', onClick: writeToday },
+      { label: 'Rappel ou alarme', icon: 'bell', onClick: () => setUi({ section: 'habits', habitsTab: 'reminders' }) },
+      { label: 'Habitude', icon: 'repeat', onClick: () => { const h = addItem('habits', { name: 'Nouvelle habitude', categoryId: null, schedule: { type: 'daily' }, target: 1, unit: '', time: null, reminder: false, startDate: ymd(new Date()), archived: false }); setUi({ section: 'habits', habitsTab: 'habits', selectedHabit: h.id }) } },
       '-',
       { label: 'Ajout rapide…', icon: 'command', hint: '/', onClick: () => { setUi({ section: 'calendar' }); setTimeout(() => window.dispatchEvent(new Event('zr:quick-add')), 50) } }
     ]
@@ -213,7 +224,7 @@ function useShortcuts(onLock) {
       if (mod && !e.shiftKey && k === 'n') { e.preventDefault(); const n = addNote({}); setUi({ section: 'notes', selectedNote: n.id, palette: false }); return }
       if (mod && e.shiftKey && k === 't') { e.preventDefault(); const t = addTask({ title: '' }); setUi({ section: 'tasks', selectedTask: t.id }); return }
       if (mod && k === 'b' && !isTyping(e)) { e.preventDefault(); setUi({ sidebarCollapsed: !u.sidebarCollapsed }); return }
-      if (e.altKey && /^[1-5]$/.test(e.key)) { e.preventDefault(); setUi({ section: SECTIONS[Number(e.key) - 1][0], popover: null }); return }
+      if (e.altKey && /^[1-9]$/.test(e.key)) { e.preventDefault(); setUi({ section: SECTIONS[Number(e.key) - 1][0], popover: null }); return }
       if (mod || e.altKey || isTyping(e)) return
       if (u.editor || u.palette || u.settings || u.dialog || u.shortcuts) return
       if (u.popover) {
@@ -274,6 +285,10 @@ function Shell({ onLock }) {
         ${u.section === 'today' && html`<${TodaySection} />`}
         ${u.section === 'calendar' && html`<${CalendarSection} />`}
         ${u.section === 'tasks' && html`<${TasksSection} />`}
+        ${u.section === 'habits' && html`<${HabitsSection} />`}
+        ${u.section === 'journal' && html`<${JournalSection} />`}
+        ${u.section === 'goals' && html`<${GoalsSection} />`}
+        ${u.section === 'trips' && html`<${TripsSection} />`}
         ${u.section === 'notes' && html`<${NotesSection} />`}
         ${u.section === 'insights' && html`<${InsightsSection} />`}
       </main>
@@ -301,10 +316,20 @@ function App() {
     applyTheme(s)
     setUi({ section: s.startSection || 'today', view: s.defaultView, date: startOfDay(new Date()) })
     startReminders()
+    // Préférences système appliquées par le processus principal (zone de notification, démarrage)
+    api.prefs && api.prefs({ runInBackground: s.runInBackground, launchAtLogin: s.launchAtLogin })
     setPhase('ready')
   }
 
   useEffect(() => { boot() }, [])
+  useEffect(() => {
+    const on = () => setUi({ online: navigator.onLine })
+    window.addEventListener('online', on)
+    window.addEventListener('offline', on)
+    api.onResume && api.onResume(() => { if (db()) checkNow() })
+    api.onNotifyClick && api.onNotifyClick(tag => { if (db() && tag) setUi({ section: 'today' }) })
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', on) }
+  }, [])
   useEffect(() => {
     const f = () => lock()
     window.addEventListener('zr:lock', f)

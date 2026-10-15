@@ -72,7 +72,26 @@ const P = {
   calendarPlus: '<rect x="3" y="4.5" width="18" height="16.5" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4M12 13v5M9.5 15.5h5"/>',
   cornerDownLeft: '<path d="M9 10.5l-5 5 5 5"/><path d="M20 4.5v7a4 4 0 0 1-4 4H4"/>',
   hash: '<path d="M4 9h16M4 15h16M10 3L8 21M16 3l-2 18"/>',
-  sparkline: '<path d="M3 17l5-5 4 4 8-9"/>'
+  sparkline: '<path d="M3 17l5-5 4 4 8-9"/>',
+  plane: '<path d="M10.5 13.5L3 11l1.5-1.5 7.5.5 4-4.5a2.1 2.1 0 0 1 3 3l-4.5 4 .5 7.5L13.5 21l-2.5-7.5"/><path d="M7 16.5l-2 2"/>',
+  train: '<rect x="5" y="3" width="14" height="13" rx="3"/><path d="M5 10h14M9 13h.01M15 13h.01M8 20l1.5-4M16 20l-1.5-4"/>',
+  car: '<path d="M5 16.5h14M6.5 16.5v2M17.5 16.5v2M4 16.5V12l2-5h12l2 5v4.5"/><path d="M4 12h16"/><circle cx="8" cy="14.2" r=".6" fill="currentColor"/><circle cx="16" cy="14.2" r=".6" fill="currentColor"/>',
+  route: '<circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H16a3.5 3.5 0 0 0 0-7H8a3.5 3.5 0 0 1 0-7h7.5"/>',
+  cloud: '<path d="M7 18.5h10a4.5 4.5 0 0 0 .4-9A6 6 0 0 0 6 10.5a4 4 0 0 0 1 8z"/>',
+  cloudSun: '<path d="M8 18.5h9a4 4 0 0 0 .35-8A5.5 5.5 0 0 0 7 11.5a3.5 3.5 0 0 0 1 7z"/><path d="M5 3.5v1.5M1.5 7H3M2.4 3.9l1 1M7.6 3.9l-1 1"/>',
+  rain: '<path d="M7 14.5h10a4.5 4.5 0 0 0 .4-9A6 6 0 0 0 6 6.5a4 4 0 0 0 1 8z"/><path d="M8 17.5l-1 3M12 17.5l-1 3M16 17.5l-1 3"/>',
+  snow: '<path d="M7 14.5h10a4.5 4.5 0 0 0 .4-9A6 6 0 0 0 6 6.5a4 4 0 0 0 1 8z"/><path d="M8 18.5h.01M12 18.5h.01M16 18.5h.01M10 21h.01M14 21h.01"/>',
+  storm: '<path d="M7 14.5h10a4.5 4.5 0 0 0 .4-9A6 6 0 0 0 6 6.5a4 4 0 0 0 1 8z"/><path d="M12.5 13l-2 4h3l-2 4"/>',
+  flame: '<path d="M12 21.5a6.5 6.5 0 0 0 6.5-6.5c0-4-3-6-3.5-9.5-2 1.5-3 3.5-3 5.5-1-1-1.5-2-1.5-3.5-2 1.5-5 4.5-5 7.5a6.5 6.5 0 0 0 6.5 6.5z"/>',
+  alarm: '<circle cx="12" cy="13" r="7.5"/><path d="M12 9v4l2.5 2M4 3.5L2 5.5M20 3.5l2 2"/>',
+  alert: '<path d="M10.3 3.9L2.4 17.5A2 2 0 0 0 4.1 20.5h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4M12 17h.01"/>',
+  hourglass: '<path d="M6 2.5h12M6 21.5h12M7 2.5v3a5 5 0 0 0 10 0v-3M7 21.5v-3a5 5 0 0 1 10 0v3"/>',
+  smile: '<circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01"/>',
+  archive: '<rect x="2.5" y="3.5" width="19" height="5" rx="1.5"/><path d="M4.5 8.5v10a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-10M10 12.5h4"/>',
+  wifiOff: '<path d="M2 2l20 20M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5.2-2.8M19 13a10 10 0 0 0-2-1.6M2 8.8a15 15 0 0 1 4.2-2.7M22 8.8A15 15 0 0 0 10.7 5M12 20h.01"/>',
+  refresh: '<path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1l2.6 2.6"/><path d="M20.5 3.5v5h-5"/>',
+  arrowUp: '<path d="M12 19V5M6 11l6-6 6 6"/>',
+  arrowDown: '<path d="M12 5v14M6 13l6 6 6-6"/>'
 }
 
 export function Icon({ name, size = 16, class: cls = '', stroke = 1.75 }) {

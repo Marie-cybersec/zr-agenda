@@ -20,5 +20,12 @@ contextBridge.exposeInMainWorld('zr', {
   saveFile: opts => ipcRenderer.invoke('file:save', opts),
   openFile: opts => ipcRenderer.invoke('file:open', opts),
   info: () => ipcRenderer.invoke('app:info'),
-  openDataDir: () => ipcRenderer.send('app:open-data-dir')
+  openDataDir: () => ipcRenderer.send('app:open-data-dir'),
+
+  prefs: patch => ipcRenderer.invoke('app:prefs', patch),
+  notify: opts => ipcRenderer.invoke('notify', opts),
+  onNotifyClick: cb => ipcRenderer.on('notify:click', (_, tag) => cb(tag)),
+  onResume: cb => ipcRenderer.on('system:resume', () => cb()),
+  getJson: url => ipcRenderer.invoke('net:get-json', url),
+  isOnline: () => ipcRenderer.invoke('net:online')
 })

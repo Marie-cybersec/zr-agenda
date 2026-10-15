@@ -293,3 +293,67 @@ export function monthMatrix(d, weekStart = 1) {
 export function weekdayOrder(weekStart) {
   return Array.from({ length: 7 }, (_, i) => (weekStart + i) % 7)
 }
+
+// ─── Fuseaux horaires ───────────────────────────────────────────────────────
+// Conversions entre un instant et l'heure murale d'un fuseau IANA (« Europe/Paris »).
+
+const dtfCache = new Map()
+function dtf(tz) {
+  if (!dtfCache.has(tz)) {
+    dtfCache.set(tz, new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'
+    }))
+  }
+  return dtfCache.get(tz)
+}
+
+export function isValidTimeZone(tz) {
+  if (!tz || typeof tz !== 'string') return false
+  try { dtf(tz); return true } catch { return false }
+}
+
+export function localTimeZone() {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' } catch { return 'UTC' }
+}
+
+function wallParts(date, tz) {
+  const p = {}
+  for (const x of dtf(tz).formatToParts(date)) p[x.type] = x.value
+  return p
+}
+
+// Heure murale « YYYY-MM-DDTHH:mm » de l'instant `date` dans le fuseau `tz`.
+export function wallTimeIn(date, tz) {
+  const p = wallParts(date, tz)
+  return p.year + '-' + p.month + '-' + p.day + 'T' + p.hour + ':' + p.minute
+}
+
+// Décalage du fuseau par rapport à UTC à l'instant donné, en minutes (Paris l'été : 120).
+export function tzOffsetMinutes(date, tz) {
+  const p = wallParts(date, tz)
+  const asUtc = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second)
+  return Math.round((asUtc - Math.floor(date.getTime() / 1000) * 1000) / MINUTE)
+}
+
+// Instant correspondant à l'heure murale `iso` dans le fuseau `tz` (RFC 5545) :
+// une heure ambiguë (retour à l'heure d'hiver) prend la première occurrence,
+// une heure inexistante (passage à l'heure d'été) est décalée de la durée du saut.
+export function fromZoned(iso, tz) {
+  if (!tz || !isValidTimeZone(tz)) return parse(iso)
+  const [date, time = '00:00'] = iso.split('T')
+  const [y, m, d] = date.split('-').map(Number)
+  const [hh, mm] = time.split(':').map(Number)
+  const guess = Date.UTC(y, m - 1, d, hh || 0, mm || 0)
+  const before = guess - tzOffsetMinutes(new Date(guess - DAY), tz) * MINUTE
+  const after = guess - tzOffsetMinutes(new Date(guess + DAY), tz) * MINUTE
+  const want = date + 'T' + pad(hh || 0) + ':' + pad(mm || 0)
+  const valid = [before, after].filter(t => wallTimeIn(new Date(t), tz) === want)
+  return new Date(valid.length ? Math.min(...valid) : before)
+}
+
+// Libellé court du décalage : « UTC+2 », « UTC−5 », « UTC+5:30 ».
+export function fmtOffset(min) {
+  const sign = min >= 0 ? '+' : '−'
+  const a = Math.abs(min)
+  return 'UTC' + sign + Math.floor(a / 60) + (a % 60 ? ':' + pad(a % 60) : '')
+}

@@ -1,97 +1,14 @@
 // État global : données persistées (db) et état d'interface (ui).
 
 import { useState, useEffect } from './lib.js'
-import { parse, toIso, addDays, ymd, startOfDay } from './dates.js'
+import { parse, addDays, ymd, startOfDay } from './dates.js'
+import { migrate, uid, DB_VERSION } from './core/model.js'
 
 const api = window.zr
 
-export const CAL_COLORS = ['#5E6AD2', '#2F80ED', '#0E9F6E', '#D97706', '#E5484D', '#8E4EC6', '#0894B3', '#E8590C', '#64748B']
-export const ACCENTS = {
-  zyrha: '#E5531D', indigo: '#5E6AD2', blue: '#2F6FED', teal: '#0E8A7E', green: '#2E8B57',
-  amber: '#C27803', red: '#D93F3F', pink: '#C8467A', graphite: '#52525B'
-}
+export { CAL_COLORS, ACCENTS, DEFAULT_SETTINGS, uid } from './core/model.js'
 
-export const DEFAULT_SETTINGS = {
-  userName: '',
-  theme: 'system',
-  accent: 'zyrha',
-  density: 'comfortable',
-  weekStart: 1,
-  h12: false,
-  defaultView: 'week',
-  defaultDuration: 60,
-  defaultCalendarId: null,
-  workStart: 8,
-  workEnd: 19,
-  hideWeekends: false,
-  showWeekNumbers: true,
-  showHolidays: true,
-  showTasksInCalendar: true,
-  hourHeight: 56,
-  defaultReminder: 10,
-  notifications: true,
-  sound: true,
-  autoLockMin: 0,
-  focusMinutes: 25,
-  breakMinutes: 5
-}
-
-export const uid = () => crypto.randomUUID()
 const nowIso = () => new Date().toISOString()
-
-function freshDb() {
-  return {
-    version: 2,
-    calendars: [
-      { id: uid(), name: 'Personnel', color: CAL_COLORS[0], visible: true },
-      { id: uid(), name: 'Travail', color: CAL_COLORS[3], visible: true },
-      { id: uid(), name: 'Famille', color: CAL_COLORS[2], visible: true }
-    ],
-    events: [], tasks: [], notes: [], notebooks: [],
-    settings: { ...DEFAULT_SETTINGS }
-  }
-}
-
-// Migration depuis la première version (events {date, start, end, category}).
-function migrate(d) {
-  if (!d) return freshDb()
-  if (d.version === 2) {
-    d.settings = { ...DEFAULT_SETTINGS, ...d.settings }
-    // Passage au thème ZYRHA : l'ancien accent par défaut devient l'orange de la marque
-    if (!d.settings.zyrhaTheme) { if (d.settings.accent === 'indigo') d.settings.accent = 'zyrha'; d.settings.zyrhaTheme = true }
-    for (const k of ['calendars', 'events', 'tasks', 'notes', 'notebooks']) d[k] = d[k] || []
-    if (!d.calendars.length) d.calendars = freshDb().calendars
-    return d
-  }
-  const out = freshDb()
-  const legacy = { work: ['Travail', 1], personal: ['Personnel', 0], meeting: ['Réunions', 5], health: ['Santé', 4], other: ['Autre', 8] }
-  const calByCat = {}
-  out.calendars = []
-  for (const [k, [name, ci]] of Object.entries(legacy)) {
-    const c = { id: uid(), name, color: CAL_COLORS[ci], visible: true }
-    calByCat[k] = c
-    if (['work', 'personal'].includes(k) || (d.events || []).some(e => e.category === k)) out.calendars.push(c)
-  }
-  for (const e of d.events || []) {
-    const date = e.date || ymd(new Date())
-    const allDay = !e.start
-    const s = parse(date + 'T' + (e.start || '00:00'))
-    let en = allDay ? addDays(s, 1) : e.end ? parse(date + 'T' + e.end) : new Date(s.getTime() + 3600000)
-    if (en <= s) en = new Date(s.getTime() + 3600000)
-    out.events.push({
-      id: e.id || uid(), title: e.title || 'Sans titre', calendarId: (calByCat[e.category] || calByCat.other).id,
-      allDay, start: toIso(s), end: toIso(en), location: '', description: e.description || '',
-      recurrence: null, exdates: [], reminders: [], createdAt: e.createdAt || nowIso(), updatedAt: nowIso()
-    })
-    if (!out.calendars.includes(calByCat[e.category] || calByCat.other)) out.calendars.push(calByCat[e.category] || calByCat.other)
-  }
-  out.notebooks = (d.notebooks || []).map(n => ({ id: n.id, name: n.name, color: n.color || CAL_COLORS[0] }))
-  out.notes = (d.notes || []).map(n => ({
-    id: n.id, title: n.title || '', content: n.content || '', notebookId: n.notebookId || null,
-    pinned: false, createdAt: n.createdAt || nowIso(), updatedAt: n.updatedAt || nowIso()
-  }))
-  return out
-}
 
 // ─── Store générique ────────────────────────────────────────────────────────
 
@@ -145,9 +62,10 @@ export function flushSync() {
 export async function loadDb() {
   const r = await api.load()
   if (r.error) return r
+  const before = r.data ? r.data.version : null
   const d = migrate(r.data)
   dbStore.set(() => d)
-  if (!r.data || r.data.version !== 2) { pending = true; await flush() }
+  if (before !== DB_VERSION) { pending = true; await flush() }
   return { ok: true }
 }
 
@@ -211,8 +129,8 @@ export function detachOccurrence(id, day, patch) {
 // Tâches
 export function addTask(data) {
   const t = {
-    id: uid(), title: '', notes: '', due: null, dueTime: null, priority: 0, done: false, doneAt: null,
-    subtasks: [], repeat: null, ...data, createdAt: nowIso()
+    id: uid(), title: '', notes: '', due: null, dueTime: null, priority: 0, done: false, doneAt: null, status: 'todo',
+    categoryId: null, estimate: null, reminder: null, subtasks: [], repeat: null, ...data, createdAt: nowIso()
   }
   mutate(d => { d.tasks = [t, ...d.tasks] })
   return t
@@ -230,7 +148,7 @@ export function toggleTask(id) {
   const t = db().tasks.find(x => x.id === id)
   if (!t) return
   const done = !t.done
-  updateTask(id, { done, doneAt: done ? nowIso() : null })
+  updateTask(id, { done, doneAt: done ? nowIso() : null, status: done ? 'done' : 'todo' })
   if (done && t.repeat && t.due) {
     let next = parse(t.due)
     do {
@@ -241,6 +159,7 @@ export function toggleTask(id) {
       else break
     } while (next < startOfDay(new Date()))
     addTask({ title: t.title, notes: t.notes, priority: t.priority, repeat: t.repeat, due: ymd(next), dueTime: t.dueTime,
+      categoryId: t.categoryId, estimate: t.estimate, reminder: t.reminder,
       subtasks: t.subtasks.map(s => ({ ...s, id: uid(), done: false })) })
   }
 }
@@ -260,6 +179,58 @@ export function removeNote(id) {
   mutate(d => { d.notes = d.notes.filter(n => n.id !== id) })
 }
 
+// Statut d'une tâche : à faire, en cours, en attente, terminée
+export function setTaskStatus(id, status) {
+  const t = db().tasks.find(x => x.id === id)
+  if (!t) return
+  if ((status === 'done') !== t.done) toggleTask(id)
+  updateTask(id, { status })
+}
+
+// Collections génériques (habitudes, routines, journal, objectifs, voyages, rappels, catégories, périodes)
+export function addItem(coll, data, prepend = false) {
+  const item = { id: uid(), ...data, createdAt: nowIso(), updatedAt: nowIso() }
+  mutate(d => { d[coll] = prepend ? [item, ...d[coll]] : [...d[coll], item] })
+  return item
+}
+export function updateItem(coll, id, patch) {
+  mutate(d => { d[coll] = d[coll].map(x => x.id === id ? { ...x, ...(typeof patch === 'function' ? patch(x) : patch), updatedAt: nowIso() } : x) })
+}
+export function removeItem(coll, id) {
+  mutate(d => { d[coll] = d[coll].filter(x => x.id !== id) })
+}
+
+// Pointage d'une habitude pour un jour (valeur absolue, 0 efface)
+export function setHabitCount(habitId, day, count) {
+  const k = ymd(day)
+  mutate(d => {
+    const log = { ...(d.habitLogs[habitId] || {}) }
+    if (count > 0) log[k] = count; else delete log[k]
+    d.habitLogs = { ...d.habitLogs, [habitId]: log }
+  })
+}
+
+export function toggleRoutineStep(routineId, day, stepId) {
+  const k = ymd(day)
+  mutate(d => {
+    const log = { ...(d.routineLogs[routineId] || {}) }
+    const set = new Set(log[k] || [])
+    set.has(stepId) ? set.delete(stepId) : set.add(stepId)
+    if (set.size) log[k] = [...set]; else delete log[k]
+    d.routineLogs = { ...d.routineLogs, [routineId]: log }
+  })
+}
+
+export function logFocus(minutes, categoryId = null) {
+  mutate(d => { d.focusLog = [...d.focusLog, { at: nowIso(), minutes, categoryId }].slice(-5000) })
+}
+
+export function setCache(key, value) {
+  mutate(d => { d.cache = { ...d.cache, [key]: value } })
+}
+
+export const categoryOf = id => db().categories.find(c => c.id === id) || null
+
 // ─── Interface ──────────────────────────────────────────────────────────────
 
 export const uiStore = createStore({
@@ -276,6 +247,8 @@ export const uiStore = createStore({
   notebookFilter: 'all',
   sidebarCollapsed: false,
   dialog: null,
+  missed: [],          // rappels manqués depuis la dernière ouverture
+  online: navigator.onLine,
   toasts: []
 })
 export const useUi = () => useStore(uiStore)

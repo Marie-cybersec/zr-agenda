@@ -3,10 +3,17 @@ import { Icon, Logo } from './icons.js'
 import { Modal, Switch, Segmented, Kbd, IconButton, cx } from './ui.js'
 import { useUi, useDb, db, setUi, setSettings, mutate, toast, ask, uid, withUndo, ACCENTS, CAL_COLORS, snapshot, restore } from './store.js'
 import { exportIcs, importIcs } from './ics.js'
+import { migrate, isBackup } from './core/model.js'
+import { tasksCsv, habitsCsv, journalMarkdown } from './core/exporters.js'
+import { ymd } from './dates.js'
+import { PlacePicker, DataStatus } from './widgets.js'
+import { useWeather } from './weather-client.js'
 
 const TABS = [
   ['general', 'Général', 'sliders'],
   ['calendar', 'Calendrier', 'calendar'],
+  ['categories', 'Catégories', 'hash'],
+  ['schedule', 'Horaires et périodes', 'clock'],
   ['appearance', 'Apparence', 'palette'],
   ['notifications', 'Notifications', 'bell'],
   ['security', 'Sécurité', 'shield'],
@@ -18,7 +25,7 @@ const TABS = [
 export const SHORTCUTS = [
   ['Général', [
     [['Ctrl', 'K'], 'Rechercher et lancer une commande'],
-    [['Alt', '1 – 5'], 'Aujourd\'hui, Calendrier, Tâches, Notes, Analyse'],
+    [['Alt', '1 – 9'], 'Aujourd\'hui, Calendrier, Tâches, Habitudes, Journal, Objectifs, Déplacements, Notes, Analyse'],
     [['Ctrl', ','], 'Paramètres'],
     [['Ctrl', 'L'], 'Verrouiller (si un mot de passe est défini)'],
     [['Ctrl', 'B'], 'Afficher ou masquer la barre latérale'],
@@ -77,6 +84,8 @@ export function SettingsModal() {
         <div class="settings-scroll">
           ${u.settings === 'general' && html`<${General} />`}
           ${u.settings === 'calendar' && html`<${CalendarPrefs} />`}
+          ${u.settings === 'categories' && html`<${Categories} />`}
+          ${u.settings === 'schedule' && html`<${Schedule} />`}
           ${u.settings === 'appearance' && html`<${Appearance} />`}
           ${u.settings === 'notifications' && html`<${Notifications} />`}
           ${u.settings === 'security' && html`<${Security} />`}
@@ -116,6 +125,87 @@ function General() {
       <${Row} label="Premier jour de la semaine">
         <${Segmented} size="sm" value=${String(s.weekStart)} onChange=${v => setSettings({ weekStart: Number(v) })} options=${[{ value: '1', label: 'Lundi' }, { value: '0', label: 'Dimanche' }, { value: '6', label: 'Samedi' }]} />
       <//>
+    </div>
+    <${WeatherPrefs} />`
+}
+
+function WeatherPrefs() {
+  const s = useDb().settings
+  const w = useWeather(s.homeLocation)
+  return html`<div class="set-group">
+    <div class="set-group-title">Météo</div>
+    <${Row} label="Afficher la météo" desc="Prévisions Open-Meteo (sans compte). Seule la position choisie est envoyée ; hors ligne, la dernière prévision reste affichée avec son âge.">
+      <${Switch} checked=${s.weatherEnabled} onChange=${v => setSettings({ weatherEnabled: v })} label="Météo" /><//>
+    <div class="set-row"><div class="set-text"><div class="set-label">Lieu principal</div>
+      <div class="set-desc">${s.homeLocation && s.weatherEnabled ? html`<${DataStatus} status=${w.status} onRefresh=${w.refresh} />` : "Utilisé sur l'écran d'accueil."}</div></div>
+      <div class="set-control"><${PlacePicker} value=${s.homeLocation} onChange=${v => setSettings({ homeLocation: v })} /></div></div>
+  </div>`
+}
+
+function Categories() {
+  const d = useDb()
+  const used = id => d.tasks.filter(t => t.categoryId === id).length + d.habits.filter(h => h.categoryId === id).length + d.goals.filter(g => g.categoryId === id).length
+  const setC = (id, patch) => mutate(x => { x.categories = x.categories.map(k => k.id === id ? { ...k, ...patch } : k) })
+  return html`<div class="set-group">
+    <div class="set-desc pad">Les catégories regroupent tâches, habitudes, routines, objectifs et sessions de concentration (ex. Université, Certifications, Projets personnels). Les agendas de l'onglet Calendrier restent séparés.</div>
+    ${d.categories.map(c => html`<div class="cat-row" key=${c.id}>
+      <input type="color" class="color-input" value=${c.color} aria-label="Couleur personnalisée" onInput=${e => setC(c.id, { color: e.target.value })} />
+      <input class="input bare" value=${c.name} onInput=${e => setC(c.id, { name: e.target.value })} />
+      <span class="muted nowrap">${used(c.id)} élément${used(c.id) > 1 ? 's' : ''}</span>
+      <div class="swatches">${CAL_COLORS.map(col => html`<button class=${cx('swatch', col === c.color && 'active')} style=${{ background: col }} aria-label="Couleur"
+        onClick=${() => setC(c.id, { color: col })}></button>`)}</div>
+      <${IconButton} icon="trash" label="Supprimer" onClick=${() => withUndo('Catégorie supprimée', () => mutate(x => {
+        const clear = list => list.map(t => t.categoryId === c.id ? { ...t, categoryId: null } : t)
+        x.categories = x.categories.filter(k => k.id !== c.id)
+        x.tasks = clear(x.tasks); x.habits = clear(x.habits); x.goals = clear(x.goals); x.routines = clear(x.routines)
+      }))} />
+    </div>`)}
+    <button class="btn btn-ghost sm add-row" onClick=${() => mutate(x => { x.categories = [...x.categories, { id: uid(), name: 'Nouvelle catégorie', color: CAL_COLORS[x.categories.length % CAL_COLORS.length] }] })}>
+      <${Icon} name="plus" size=${14} />Ajouter une catégorie</button>
+  </div>`
+}
+
+function HourSelect({ value, onChange, from, to, midnight }) {
+  const hours = []
+  for (let h = from; h <= to; h++) hours.push(h)
+  return html`<select class="input select" value=${value} onChange=${e => onChange(Number(e.target.value))}>
+    ${hours.map(h => html`<option value=${h}>${h === 24 && midnight ? 'minuit' : String(h).padStart(2, '0') + ':00'}</option>`)}</select>`
+}
+
+function Schedule() {
+  const d = useDb()
+  const s = d.settings
+  const setP = (id, patch) => mutate(x => { x.periods = x.periods.map(p => p.id === id ? { ...p, ...patch } : p) })
+  return html`
+    <div class="set-group">
+      <div class="set-group-title">Journée active</div>
+      <${Row} label="Début et fin de journée" desc="Bornes du calcul « temps restant » et des créneaux libres de l'accueil.">
+        <div class="inline">
+          <${HourSelect} value=${s.dayStart} from=${0} to=${23} onChange=${v => setSettings({ dayStart: Math.min(v, s.dayEnd - 1) })} />
+          <span class="muted">à</span>
+          <${HourSelect} value=${s.dayEnd} from=${1} to=${24} midnight onChange=${v => setSettings({ dayEnd: Math.max(v, s.dayStart + 1) })} />
+        </div>
+      <//>
+      <${Row} label="Heures de cours ou de travail" desc="Mises en valeur dans la grille du calendrier.">
+        <div class="inline">
+          <${HourSelect} value=${s.workStart} from=${0} to=${23} onChange=${v => setSettings({ workStart: Math.min(v, s.workEnd - 1) })} />
+          <span class="muted">à</span>
+          <${HourSelect} value=${s.workEnd} from=${1} to=${24} onChange=${v => setSettings({ workEnd: Math.max(v, s.workStart + 1) })} />
+        </div>
+      <//>
+    </div>
+    <div class="set-group">
+      <div class="set-group-title">Périodes : semestres, sessions d'examens, préparations de certification</div>
+      <div class="set-desc pad">Aucun horaire n'est imposé. Créez vos cours comme événements récurrents dans l'agenda de votre choix, puis, dans l'éditeur d'événement, arrêtez la série « à la fin de la période » d'un clic.</div>
+      ${d.periods.map(p => html`<div class="period-row" key=${p.id}>
+        <input class="input" value=${p.name} placeholder="Semestre 1" onInput=${e => setP(p.id, { name: e.target.value })} />
+        <input type="date" class="input" value=${p.start || ''} onChange=${e => setP(p.id, { start: e.target.value || null })} />
+        <span class="muted">→</span>
+        <input type="date" class="input" value=${p.end || ''} min=${p.start || ''} onChange=${e => setP(p.id, { end: e.target.value || null })} />
+        <${IconButton} icon="trash" label="Supprimer" onClick=${() => mutate(x => { x.periods = x.periods.filter(k => k.id !== p.id) })} />
+      </div>`)}
+      <button class="btn btn-ghost sm add-row" onClick=${() => mutate(x => { x.periods = [...x.periods, { id: uid(), name: 'Nouvelle période', start: ymd(new Date()), end: null }] })}>
+        <${Icon} name="plus" size=${14} />Ajouter une période</button>
     </div>`
 }
 
@@ -214,13 +304,59 @@ function Appearance() {
     </div>`
 }
 
+const NOTIFY_TYPES = [
+  ['events', "Événements de l'agenda"], ['tasks', 'Échéances des tâches'], ['habits', 'Habitudes (avec heure et rappel)'], ['routines', 'Routines'],
+  ['reminders', 'Rappels et alarmes'], ['trips', 'Départs de trajets'], ['focus', 'Fin des sessions de concentration']
+]
+
 function Notifications() {
   const s = useDb().settings
   return html`
     <div class="set-group">
-      <${Row} label="Notifications de bureau" desc="Rappels d'événements, échéances de tâches et fin des sessions de concentration."><${Switch} checked=${s.notifications} onChange=${v => setSettings({ notifications: v })} label="Notifications" /><//>
+      <${Row} label="Notifications Windows" desc="Interrupteur général de tous les rappels."><${Switch} checked=${s.notifications} onChange=${v => setSettings({ notifications: v })} label="Notifications" /><//>
       <${Row} label="Signal sonore"><${Switch} checked=${s.sound} onChange=${v => setSettings({ sound: v })} label="Son" /><//>
-      <${Row} label="Tester"><button class="btn btn-secondary sm" onClick=${() => { try { new Notification('ZR Agenda', { body: 'Les notifications fonctionnent.' }) } catch {} }}>Envoyer une notification</button><//>
+      <${Row} label="Tester">
+        <div class="inline">
+          <button class="btn btn-secondary sm" onClick=${() => window.zr.notify({ title: 'ZR Agenda', body: 'Les notifications fonctionnent.' })}>Notification</button>
+          <button class="btn btn-secondary sm" onClick=${() => window.zr.notify({ title: 'Alarme de test', body: "Une alarme reste affichée jusqu'à ce que vous la fermiez.", alarm: true })}>Alarme</button>
+        </div>
+      <//>
+    </div>
+    <div class="set-group">
+      <div class="set-group-title">Types de rappels</div>
+      ${NOTIFY_TYPES.map(([k, l]) => html`
+        <${Row} label=${l}><${Switch} checked=${s.notify[k] !== false} onChange=${v => setSettings({ notify: { ...s.notify, [k]: v } })} label=${l} /><//>`)}
+      <${Row} label="Rappel des tâches par défaut" desc="Pour les tâches ayant une heure d'échéance.">
+        <select class="input select" value=${s.taskReminder} onChange=${e => setSettings({ taskReminder: Number(e.target.value) })}>
+          <option value="-1">Aucun</option><option value="0">À l'échéance</option><option value="10">10 min avant</option><option value="30">30 min avant</option><option value="60">1 h avant</option><option value="1440">La veille</option>
+        </select><//>
+      <${Row} label="Rappel avant un départ">
+        <select class="input select" value=${s.tripReminder} onChange=${e => setSettings({ tripReminder: Number(e.target.value) })}>
+          <option value="-1">Aucun</option><option value="30">30 min avant</option><option value="60">1 h avant</option><option value="120">2 h avant</option><option value="180">3 h avant</option><option value="1440">La veille</option>
+        </select><//>
+    </div>
+    <div class="set-group">
+      <div class="set-group-title">Heures calmes</div>
+      <${Row} label="Activer les heures calmes" desc="Ni notification ni son pendant cette plage : les rappels concernés apparaissent ensuite comme « manqués » sur l'accueil. Les alarmes sonnent quand même.">
+        <${Switch} checked=${s.quietHours.enabled} onChange=${v => setSettings({ quietHours: { ...s.quietHours, enabled: v } })} label="Heures calmes" /><//>
+      <${Row} label="Plage">
+        <div class="inline">
+          <input type="time" class="input" value=${s.quietHours.start} disabled=${!s.quietHours.enabled} onChange=${e => e.target.value && setSettings({ quietHours: { ...s.quietHours, start: e.target.value } })} />
+          <span class="muted">à</span>
+          <input type="time" class="input" value=${s.quietHours.end} disabled=${!s.quietHours.enabled} onChange=${e => e.target.value && setSettings({ quietHours: { ...s.quietHours, end: e.target.value } })} />
+        </div><//>
+    </div>
+    <div class="set-group">
+      <div class="set-group-title">Fonctionnement sous Windows</div>
+      <${Row} label="Rester actif dans la zone de notification" desc="Fermer la fenêtre ne quitte pas l'application : les rappels continuent. Pour quitter : clic droit sur l'icône près de l'horloge.">
+        <${Switch} checked=${s.runInBackground} onChange=${v => { setSettings({ runInBackground: v }); window.zr.prefs({ runInBackground: v }) }} label="Zone de notification" /><//>
+      <${Row} label="Lancer au démarrage de Windows" desc="Démarre discrètement dans la zone de notification.">
+        <${Switch} checked=${s.launchAtLogin} onChange=${v => { setSettings({ launchAtLogin: v }); window.zr.prefs({ launchAtLogin: v }) }} label="Démarrage automatique" /><//>
+      <${Row} label="Rappels manqués" desc="À la réouverture, les rappels survenus pendant l'absence sont regroupés sur l'accueil, dans cette limite.">
+        <select class="input select" value=${s.missedWindowHours} onChange=${e => setSettings({ missedWindowHours: Number(e.target.value) })}>
+          ${[2, 6, 12, 24, 48, 168].map(h => html`<option value=${h}>${h < 24 ? h + ' heures' : h === 168 ? '7 jours' : h / 24 + ' jour' + (h > 24 ? 's' : '')}</option>`)}
+        </select><//>
+      <div class="set-warning"><${Icon} name="info" size=${14} />Limites de Windows : aucun rappel ne part si l'application est quittée ou si l'ordinateur est en veille (ils sont alors signalés comme manqués) ; le mode « Ne pas déranger » de Windows peut masquer les bannières, qui restent dans le centre de notifications.</div>
     </div>
     <div class="set-group">
       <div class="set-group-title">Concentration</div>
@@ -282,7 +418,11 @@ function Data() {
   const d = useDb()
   const [info, setInfo] = useState(null)
   useEffect(() => { window.zr.info().then(setInfo) }, [])
-  const stamp = new Date().toISOString().slice(0, 10)
+  const stamp = ymd(new Date())
+  const saveAs = async (name, ext, label, content, msg) => {
+    const p = await window.zr.saveFile({ defaultPath: 'zr-agenda-' + name + '-' + stamp + '.' + ext, filters: [{ name: label, extensions: [ext] }], content })
+    if (p) toast(msg)
+  }
 
   const exportCal = async () => {
     const p = await window.zr.saveFile({ defaultPath: 'zr-agenda-' + stamp + '.ics', filters: [{ name: 'iCalendar', extensions: ['ics'] }], content: exportIcs(d.events, d.calendars) })
@@ -317,12 +457,12 @@ function Data() {
     if (!f) return
     let data
     try { data = JSON.parse(f.content) } catch { return toast('Fichier illisible') }
-    if (!data || data.version !== 2 || !Array.isArray(data.events)) return toast('Ce fichier n\'est pas une sauvegarde ZR Agenda')
+    if (!isBackup(data)) return toast('Ce fichier n\'est pas une sauvegarde ZR Agenda')
     const r = await ask({ title: 'Restaurer cette sauvegarde ?', message: 'Toutes les données actuelles seront remplacées par celles du fichier (' + data.events.length + ' événements, ' + (data.tasks || []).length + ' tâches, ' + (data.notes || []).length + ' notes).',
       actions: [{ label: 'Annuler', value: false }, { label: 'Restaurer', value: true, tone: 'danger' }] })
     if (!r) return
     const snap = snapshot()
-    restore({ ...data, settings: { ...d.settings, ...data.settings } })
+    restore(migrate({ ...data, settings: { ...d.settings, ...data.settings } }))
     toast('Sauvegarde restaurée', { action: 'Annuler', onAction: () => restore(snap) })
   }
   return html`
@@ -333,8 +473,14 @@ function Data() {
     </div>
     <div class="set-group">
       <div class="set-group-title">Sauvegarde complète</div>
-      <${Row} label="Exporter toutes les données" desc="Événements, tâches, notes et réglages au format JSON (fichier non chiffré)."><button class="btn btn-secondary sm" onClick=${exportJson}><${Icon} name="download" size=${14} />Exporter</button><//>
+      <${Row} label="Exporter toutes les données" desc="Toutes les données (agenda, tâches, notes, habitudes, journal, objectifs, déplacements) et réglages au format JSON (fichier non chiffré)."><button class="btn btn-secondary sm" onClick=${exportJson}><${Icon} name="download" size=${14} />Exporter</button><//>
       <${Row} label="Restaurer une sauvegarde"><button class="btn btn-secondary sm" onClick=${importJson}><${Icon} name="upload" size=${14} />Restaurer</button><//>
+    </div>
+    <div class="set-group">
+      <div class="set-group-title">Exports lisibles</div>
+      <${Row} label="Tâches (.csv)" desc="Pour Excel : statut, priorité, catégorie, échéance, estimation."><button class="btn btn-secondary sm" onClick=${() => saveAs('taches', 'csv', 'CSV', tasksCsv(d), d.tasks.length + ' tâche(s) exportée(s)')}><${Icon} name="download" size=${14} />Exporter</button><//>
+      <${Row} label="Habitudes (.csv)" desc="Historique des 90 derniers jours, une colonne par habitude."><button class="btn btn-secondary sm" onClick=${() => saveAs('habitudes', 'csv', 'CSV', habitsCsv(d), 'Historique des habitudes exporté')}><${Icon} name="download" size=${14} />Exporter</button><//>
+      <${Row} label="Journal (.md)" desc="Toutes les entrées par date, au format Markdown (non chiffré)."><button class="btn btn-secondary sm" onClick=${() => saveAs('journal', 'md', 'Markdown', journalMarkdown(d), d.journal.length + ' entrée(s) exportée(s)')}><${Icon} name="download" size=${14} />Exporter</button><//>
     </div>
     <div class="set-group">
       <div class="set-group-title">Stockage local</div>
@@ -342,6 +488,7 @@ function Data() {
       <${Row} label="Sauvegardes automatiques" desc="Une copie chiffrée par jour, 30 jours conservés."><span class="chip">${info ? info.backups : '…'} disponible${info && info.backups > 1 ? 's' : ''}</span><//>
       <div class="data-counts">
         <span><b>${d.events.length}</b> événements</span><span><b>${d.tasks.length}</b> tâches</span><span><b>${d.notes.length}</b> notes</span><span><b>${d.calendars.length}</b> agendas</span>
+        <span><b>${d.habits.length}</b> habitudes</span><span><b>${d.journal.length}</b> entrées de journal</span><span><b>${d.goals.length}</b> objectifs</span><span><b>${d.trips.length}</b> déplacements</span>
       </div>
     </div>`
 }
