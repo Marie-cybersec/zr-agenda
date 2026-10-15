@@ -1,0 +1,91 @@
+import { html } from './lib.js'
+
+// Jeu d'icônes linéaires 24×24, trait 1.75.
+const P = {
+  calendar: '<rect x="3" y="4.5" width="18" height="16.5" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>',
+  today: '<rect x="3" y="4.5" width="18" height="16.5" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/><rect x="7.5" y="13" width="4" height="4" rx="1" fill="currentColor" stroke="none"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>',
+  moon: '<path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z"/>',
+  monitor: '<rect x="2.5" y="3.5" width="19" height="13" rx="2"/><path d="M8 20.5h8M12 16.5v4"/>',
+  check: '<path d="M4.5 12.5l5 5 10-11"/>',
+  checkCircle: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/>',
+  tasks: '<rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M8 12l3 3 5-6"/>',
+  note: '<path d="M14.5 3H7a2.5 2.5 0 0 0-2.5 2.5v13A2.5 2.5 0 0 0 7 21h10a2.5 2.5 0 0 0 2.5-2.5V8z"/><path d="M14 3v5.5h5.5M8.5 13h7M8.5 17h5"/>',
+  chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M20.5 20.5l-4.5-4.5"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  minus: '<path d="M5 12h14"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  chevronLeft: '<path d="M15 18l-6-6 6-6"/>',
+  chevronRight: '<path d="M9 18l6-6-6-6"/>',
+  chevronDown: '<path d="M6 9l6 6 6-6"/>',
+  chevronUp: '<path d="M18 15l-6-6-6 6"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  pin: '<path d="M12 17v5M9 3h6l-1 6 3 3v2H7v-2l3-3z"/>',
+  mapPin: '<path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
+  repeat: '<path d="M17 2.5l3 3-3 3"/><path d="M4 11.5v-1a5 5 0 0 1 5-5h11M7 21.5l-3-3 3-3"/><path d="M20 12.5v1a5 5 0 0 1-5 5H4"/>',
+  bell: '<path d="M18 8.5a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+  text: '<path d="M4 6h16M4 12h16M4 18h10"/>',
+  trash: '<path d="M3.5 6h17M8.5 6V4.5a1.5 1.5 0 0 1 1.5-1.5h4a1.5 1.5 0 0 1 1.5 1.5V6M18.5 6l-.8 13a2 2 0 0 1-2 1.9H8.3a2 2 0 0 1-2-1.9L5.5 6"/>',
+  copy: '<rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 8.5V5.5a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3"/>',
+  edit: '<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4z"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  lock: '<rect x="4.5" y="10.5" width="15" height="10.5" rx="2.5"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/>',
+  unlock: '<rect x="4.5" y="10.5" width="15" height="10.5" rx="2.5"/><path d="M8 10.5V7a4 4 0 0 1 7.75-1.4"/>',
+  more: '<circle cx="5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="19" cy="12" r="1.3" fill="currentColor"/>',
+  flag: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
+  sidebar: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/>',
+  download: '<path d="M12 3.5v12M7 10.5l5 5 5-5M4 20.5h16"/>',
+  upload: '<path d="M12 15.5v-12M7 8.5l5-5 5 5M4 20.5h16"/>',
+  folder: '<path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2.5h7.5A2.5 2.5 0 0 1 21 10v7.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/>',
+  book: '<path d="M4 19.5V5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2zM4 19.5A2 2 0 0 0 6 21.5h13"/>',
+  inbox: '<path d="M21.5 12.5h-6l-2 3h-3l-2-3h-6"/><path d="M5.45 5.6L2.5 12.5v5a2 2 0 0 0 2 2h15a2 2 0 0 0 2-2v-5l-2.95-6.9A2 2 0 0 0 16.7 4.5H7.3a2 2 0 0 0-1.85 1.1z"/>',
+  play: '<path d="M7 4.5v15l12.5-7.5z"/>',
+  pause: '<path d="M8 5v14M16 5v14"/>',
+  reset: '<path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1L3.5 8.5"/><path d="M3.5 3.5v5h5"/>',
+  target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>',
+  bold: '<path d="M7 4.5h6.5a3.75 3.75 0 0 1 0 7.5H7zM7 12h7.5a3.75 3.75 0 0 1 0 7.5H7z"/>',
+  italic: '<path d="M19 4.5h-8.5M13.5 19.5H5M15 4.5L9 19.5"/>',
+  underline: '<path d="M6.5 3.5v7a5.5 5.5 0 0 0 11 0v-7M4.5 21h15"/>',
+  strike: '<path d="M16.5 7A4 4 0 0 0 12.5 4.5h-1.5a3.5 3.5 0 0 0 0 7h2a3.5 3.5 0 0 1 0 7h-1.5A4 4 0 0 1 7.5 16M4 12h16"/>',
+  list: '<path d="M9 6h11.5M9 12h11.5M9 18h11.5"/><circle cx="4.5" cy="6" r="1.1" fill="currentColor"/><circle cx="4.5" cy="12" r="1.1" fill="currentColor"/><circle cx="4.5" cy="18" r="1.1" fill="currentColor"/>',
+  listOrdered: '<path d="M10 6h10.5M10 12h10.5M10 18h10.5M4 4.5h1.5V9M4 9h3M7 19.5H4l3-4a1.4 1.4 0 0 0-2.3-1.6"/>',
+  listCheck: '<path d="M11 6h9.5M11 12h9.5M11 18h9.5"/><path d="M3.5 6l1.5 1.5 3-3M3.5 12l1.5 1.5 3-3"/><rect x="3.5" y="16" width="4" height="4" rx="1"/>',
+  quote: '<path d="M4 19.5V13a6 6 0 0 1 4.5-5.8M14 19.5V13a6 6 0 0 1 4.5-5.8M4 13.5h5v6H4zM14 13.5h5v6h-5z"/>',
+  code: '<path d="M8.5 7L3.5 12l5 5M15.5 7l5 5-5 5"/>',
+  link: '<path d="M10 14a4.5 4.5 0 0 0 6.36 0l3-3a4.5 4.5 0 0 0-6.36-6.36l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.36 0l-3 3a4.5 4.5 0 0 0 6.36 6.36l1-1"/>',
+  divider: '<path d="M3.5 12h17"/><path d="M8 7.5h8M8 16.5h8" opacity=".45"/>',
+  heading: '<path d="M6 4.5v15M18 4.5v15M6 12h12"/>',
+  eraser: '<path d="M19.5 20.5h-11l-5-5a2 2 0 0 1 0-2.83l9.17-9.17a2 2 0 0 1 2.83 0l5 5a2 2 0 0 1 0 2.83L13 20.5"/><path d="M8.5 9.5l7 7"/>',
+  command: '<path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/>',
+  keyboard: '<rect x="2.5" y="5.5" width="19" height="13" rx="2"/><path d="M6.5 9.5h.01M10 9.5h.01M14 9.5h.01M17.5 9.5h.01M6.5 13h.01M17.5 13h.01M9.5 15h5"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.5h.01"/>',
+  palette: '<circle cx="13.5" cy="6.5" r="1.3" fill="currentColor"/><circle cx="17.5" cy="10.5" r="1.3" fill="currentColor"/><circle cx="8.5" cy="7.5" r="1.3" fill="currentColor"/><circle cx="6.5" cy="12.5" r="1.3" fill="currentColor"/><path d="M12 2.5a9.5 9.5 0 0 0 0 19c1.1 0 1.75-.75 1.75-1.7 0-.45-.2-.85-.45-1.15-.28-.3-.43-.7-.43-1.15 0-.95.78-1.7 1.75-1.7h2.03A5.85 5.85 0 0 0 21.5 10C21.5 5.8 17.25 2.5 12 2.5z"/>',
+  shield: '<path d="M12 21.5s8-3.5 8-9.5V5.5l-8-3-8 3V12c0 6 8 9.5 8 9.5z"/>',
+  database: '<ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v13c0 1.66 3.58 3 8 3s8-1.34 8-3v-13M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/>',
+  sliders: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1.5 14h5M9.5 8h5M17.5 16h5"/>',
+  arrowRight: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+  externalLink: '<path d="M18 13.5v5a2 2 0 0 1-2 2H5.5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5M15 3.5h5.5V9M10 14L20.5 3.5"/>',
+  grip: '<circle cx="9" cy="6" r="1.2" fill="currentColor"/><circle cx="15" cy="6" r="1.2" fill="currentColor"/><circle cx="9" cy="12" r="1.2" fill="currentColor"/><circle cx="15" cy="12" r="1.2" fill="currentColor"/><circle cx="9" cy="18" r="1.2" fill="currentColor"/><circle cx="15" cy="18" r="1.2" fill="currentColor"/>',
+  zoomIn: '<circle cx="11" cy="11" r="7"/><path d="M20.5 20.5l-4.5-4.5M11 8v6M8 11h6"/>',
+  zoomOut: '<circle cx="11" cy="11" r="7"/><path d="M20.5 20.5l-4.5-4.5M8 11h6"/>',
+  calendarPlus: '<rect x="3" y="4.5" width="18" height="16.5" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4M12 13v5M9.5 15.5h5"/>',
+  cornerDownLeft: '<path d="M9 10.5l-5 5 5 5"/><path d="M20 4.5v7a4 4 0 0 1-4 4H4"/>',
+  hash: '<path d="M4 9h16M4 15h16M10 3L8 21M16 3l-2 18"/>',
+  sparkline: '<path d="M3 17l5-5 4 4 8-9"/>'
+}
+
+export function Icon({ name, size = 16, class: cls = '', stroke = 1.75 }) {
+  return html`<svg class=${'icon ' + cls} width=${size} height=${size} viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" stroke-width=${stroke} stroke-linecap="round" stroke-linejoin="round"
+    aria-hidden="true" dangerouslySetInnerHTML=${{ __html: P[name] || '' }}></svg>`
+}
+
+export function Logo({ size = 22 }) {
+  return html`<svg width=${size} height=${size} viewBox="0 0 32 32" aria-hidden="true" class="logo">
+    <rect width="32" height="32" rx="8" fill="#161614"/>
+    <circle cx="16" cy="16" r="9.4" fill="none" stroke="#fff" stroke-opacity=".08" stroke-width="3"/>
+    <circle cx="16" cy="16" r="9.4" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-dasharray="49 60" transform="rotate(-90 16 16)"/>
+    <path d="M12.6 16.4l2.4 2.3 4.4-5" fill="none" stroke="#f4f2ec" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`
+}
